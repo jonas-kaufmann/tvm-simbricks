@@ -314,5 +314,5 @@ def test_conv2d(device):
 
 
 if __name__ == "__main__":
-    test_conv2d(device="arm_cpu")
+    #test_conv2d(device="arm_cpu")
     test_conv2d(device="vta")
