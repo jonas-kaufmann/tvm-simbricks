@@ -69,6 +69,10 @@ if env.TARGET == "pynq":
     # by passing the path to the bitstream file instead of None.
     vta.program_fpga(remote, bitstream=None)
 
+elif env.TARGET == "simbricks-pci":
+    assert tvm.runtime.enabled("rpc")
+    remote = rpc.connect(host, port)
+
 # In simulation mode, host the RPC server locally.
 elif env.TARGET in ["sim", "tsim"]:
     remote = rpc.LocalSession()
