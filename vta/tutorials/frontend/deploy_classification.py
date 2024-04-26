@@ -47,12 +47,11 @@ from PIL import Image
 
 from mxnet.gluon.model_zoo import vision
 import numpy as np
-from matplotlib import pyplot as plt
 
 import tvm
 from tvm import te
 from tvm import rpc, autotvm, relay
-from tvm.contrib import graph_executor, utils, download
+from tvm.contrib import graph_executor, utils
 from tvm.contrib.debugger import debug_executor
 from tvm.relay import transform
 
@@ -100,7 +99,7 @@ assert model in pack_dict
 # When target is 'pynq', reconfigure FPGA and runtime.
 # Otherwise, if target is 'sim', execute locally.
 
-if env.TARGET not in ["sim", "tsim", "intelfocl"]:
+if env.TARGET not in ["sim", "tsim", "intelfocl", "simbricks-pci"]:
 
     # Get remote from tracker node if environment variable is set.
     # To set up the tracker, you'll need to follow the "Auto-tuning
@@ -127,6 +126,11 @@ if env.TARGET not in ["sim", "tsim", "intelfocl"]:
     vta.program_fpga(remote, bitstream=None)
     reconfig_time = time.time() - reconfig_start
     print("Reconfigured FPGA and RPC runtime in {0:.2f}s!".format(reconfig_time))
+
+elif env.TARGET == 'simbricks-pci':
+    device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
+    device_port = os.environ.get("VTA_RPC_PORT", "9091")
+    remote = rpc.connect(device_host, int(device_port))
 
 # In simulation mode, host the RPC server locally.
 else:
@@ -238,20 +242,10 @@ with autotvm.tophub.context(target):
 # and an input test image.
 
 # Download ImageNet categories
-categ_url = "https://github.com/uwsampl/web-data/raw/main/vta/models/"
-categ_fn = "synset.txt"
-download.download(join(categ_url, categ_fn), categ_fn)
-synset = eval(open(categ_fn).read())
-
-# Download test image
-image_url = "https://homes.cs.washington.edu/~moreau/media/vta/cat.jpg"
-image_fn = "cat.png"
-download.download(image_url, image_fn)
+synset = eval(open('/tmp/guest/synset.txt').read())
 
 # Prepare test image for inference
-image = Image.open(image_fn).resize((224, 224))
-plt.imshow(image)
-plt.show()
+image = Image.open('/tmp/guest/cat.jpg').resize((224, 224))
 image = np.array(image) - np.array([123.0, 117.0, 104.0])
 image /= np.array([58.395, 57.12, 57.375])
 image = image.transpose((2, 0, 1))

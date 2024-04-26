@@ -58,6 +58,8 @@ from mxnet.gluon.model_zoo import vision
 import numpy as np
 from PIL import Image
 
+import random
+random.seed(10)
 from tvm import topi
 import tvm
 from tvm import te
@@ -68,7 +70,10 @@ from tvm.autotvm.tuner import XGBTuner, GATuner, RandomTuner, GridSearchTuner
 
 import vta
 from vta.testing import simulator
+from vta.testing.simulator import _load_sw
 from vta.top import graph_pack
+
+import numpy as np
 
 #################################################################
 # Compile network
@@ -205,7 +210,7 @@ log_file = "%s.%s.log" % (device, network)
 tuning_option = {
     "log_filename": log_file,
     "tuner": "random",
-    "n_trial": 1000,
+    "n_trial": 10,
     "early_stopping": None,
     "measure_option": autotvm.measure_option(
         builder=autotvm.LocalBuilder(),
@@ -213,9 +218,9 @@ tuning_option = {
             env.TARGET,
             host=tracker_host,
             port=tracker_port,
-            number=5,
+            number=1,
+            repeat=1,
             timeout=60,
-            module_loader=vta.module_loader(),
             # check_correctness=True, # TODO: re-enable when check_correctness works again.
         ),
     ),
@@ -249,7 +254,7 @@ def tune_tasks(
     tasks,
     measure_option,
     tuner="xgb",
-    n_trial=1000,
+    n_trial=10,
     early_stopping=None,
     log_filename="tuning.log",
     use_transfer_learning=True,
@@ -390,12 +395,13 @@ def tune_and_evaluate(tuning_opt):
 
     # We do not run the tuning in our webpage server since it takes too long.
     # Comment the following line to run it by yourself.
-    return
+    # return
 
     # run tuning tasks
     print("Tuning...")
     tune_tasks(tasks, **tuning_opt)
 
+    return
     # evaluate with tuning history
     if env.TARGET != "sim":
         # Get remote from fleet node
