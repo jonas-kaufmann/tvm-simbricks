@@ -45,6 +45,7 @@ import numpy as np
 from tvm import rpc
 from tvm.contrib import utils
 from vta.testing import simulator
+import time
 
 # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
 env = vta.get_env()
@@ -347,7 +348,10 @@ if env.TARGET in ["sim", "tsim"]:
     simulator.clear_stats()
 
 # Invoke the module to perform the computation
+start_ns = time.time_ns()
 f(data_nd, weight_nd, res_nd)
+end_ns = time.time_ns()
+print(f"Duration: {end_ns - start_ns} ns")
 
 # Verify against numpy implementation
 res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
