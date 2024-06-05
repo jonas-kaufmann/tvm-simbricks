@@ -343,6 +343,19 @@ data_nd = tvm.nd.array(data_packed, ctx)
 weight_nd = tvm.nd.array(weight_packed, ctx)
 res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
+# Compute reference with numpy
+res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
+res_ref = res_ref >> env.INP_WIDTH
+res_ref = np.clip(res_ref, 0, inp_max)
+res_ref = res_ref.astype(res.dtype)
+res_ref = res_ref.reshape(
+    batch_size // env.BATCH, env.BATCH, out_channels // env.BLOCK_OUT, env.BLOCK_OUT
+).transpose((0, 2, 1, 3))
+
+# make a gem5 checkpoint
+if os.getenv("GEM5_CP"):
+    os.system("m5 checkpoint")
+
 # Clear stats
 if env.TARGET in ["sim", "tsim"]:
     simulator.clear_stats()
@@ -354,14 +367,11 @@ end_ns = time.time_ns()
 print(f"Duration: {end_ns - start_ns} ns")
 
 # Verify against numpy implementation
-res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
-res_ref = res_ref >> env.INP_WIDTH
-res_ref = np.clip(res_ref, 0, inp_max)
-res_ref = res_ref.astype(res.dtype)
-res_ref = res_ref.reshape(
-    batch_size // env.BATCH, env.BATCH, out_channels // env.BLOCK_OUT, env.BLOCK_OUT
-).transpose((0, 2, 1, 3))
 np.testing.assert_equal(res_ref, res_nd.numpy())
+
+# make gem5 exit
+if os.getenv("GEM5_CP"):
+    os.system("m5 exit")
 
 # Print stats
 if env.TARGET in ["sim", "tsim"]:
