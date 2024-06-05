@@ -343,6 +343,10 @@ data_nd = tvm.nd.array(data_packed, ctx)
 weight_nd = tvm.nd.array(weight_packed, ctx)
 res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
+# make a gem5 checkpoint
+if os.getenv("GEM5_CP"):
+    os.system("m5 checkpoint")
+
 # Invoke the module to perform the computation
 start_ns = time.time_ns()
 f(data_nd, weight_nd, res_nd)
