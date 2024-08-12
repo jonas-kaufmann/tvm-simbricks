@@ -42,7 +42,7 @@ import tvm
 from tvm import te
 import vta
 import numpy as np
-from tvm import rpc
+from tvm import autotvm, rpc
 from tvm.contrib import utils
 from vta.testing import simulator
 import time
@@ -50,33 +50,19 @@ import time
 # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
 env = vta.get_env()
 
-# We read the Pynq RPC host IP address and port number from the OS environment
-host = os.environ.get("VTA_RPC_HOST", "192.168.2.99")
-port = int(os.environ.get("VTA_RPC_PORT", "9091"))
-
-# We configure both the bitstream and the runtime system on the Pynq
-# to match the VTA configuration specified by the vta_config.json file.
-if env.TARGET == "pynq":
-
-    # Make sure that TVM was compiled with RPC=1
-    assert tvm.runtime.enabled("rpc")
-    remote = rpc.connect(host, port)
-
-    # Reconfigure the JIT runtime
-    vta.reconfig_runtime(remote)
-
-    # Program the FPGA with a pre-compiled VTA bitstream.
-    # You can program the FPGA with your own custom bitstream
-    # by passing the path to the bitstream file instead of None.
-    vta.program_fpga(remote, bitstream=None)
-
-elif env.TARGET == "simbricks-pci":
-    assert tvm.runtime.enabled("rpc")
-    remote = rpc.connect(host, port)
-
-# In simulation mode, host the RPC server locally.
-elif env.TARGET in ["sim", "tsim"]:
-    remote = rpc.LocalSession()
+# Set up RPC connection to remote
+tracker_host = os.environ.get("TVM_TRACKER_HOST", None)
+tracker_port = os.environ.get("TVM_TRACKER_PORT", None)
+# If above are unset, connect to device directly
+device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
+device_port = os.environ.get("VTA_RPC_PORT", "9091")
+assert tvm.runtime.enabled("rpc")
+if tracker_host is None or tracker_port is None:
+    remote = rpc.connect(device_host, int(device_port))
+else:
+    remote = autotvm.measure.request_remote(
+        env.TARGET, tracker_host, int(tracker_port), timeout=10
+    )
 
 ######################################################################
 # Computation Declaration
@@ -321,6 +307,7 @@ my_gemm = vta.build(
 temp = utils.tempdir()
 my_gemm.save(temp.relpath("gemm.o"))
 remote.upload(temp.relpath("gemm.o"))
+print(f'')
 f = remote.load_module("gemm.o")
 
 # Get the remote device context
