@@ -32,6 +32,7 @@ from tvm import autotvm, relay
 from tvm.relay.testing.darknet import __darknetffi__
 from vta.top import graph_pack
 import sys
+import json
 
 MODEL_NAME = "yolov3-tiny"
 
@@ -142,6 +143,15 @@ def main():
 
             # Export the inference library
             lib.export_library(f"{darknet_dir}/graphlib_{target_name}.tar")
+
+            # Export network properties
+            net_properties = {"neth": net.h, "netw": net.w}
+            with open(
+                f"{darknet_dir}/{MODEL_NAME}_properties.json",
+                "w",
+                encoding="utf-8",
+            ) as f:
+                json.dump(net_properties, f)
 
 
 if __name__ == "__main__":
