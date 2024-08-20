@@ -141,7 +141,7 @@ set(USE_GRAPH_EXECUTOR_CUDA_GRAPH OFF)
 set(USE_PIPELINE_EXECUTOR OFF)
 
 # Whether to enable the profiler for the graph executor and vm
-set(USE_PROFILER ON)
+set(USE_PROFILER OFF)
 
 # Whether enable microTVM standalone runtime
 set(USE_MICRO_STANDALONE_RUNTIME OFF)
@@ -415,7 +415,7 @@ set(USE_PAPI OFF)
 #   be enabled, otherwise it will be disabled.
 # Note that cmake will use `find_package` to find GTest. Please use cmake's
 # predefined variables to specify the path to the GTest package if needed.
-set(USE_GTEST AUTO)
+set(USE_GTEST OFF)
 
 # Enable using CUTLASS as a BYOC backend
 # Need to have USE_CUDA=ON
