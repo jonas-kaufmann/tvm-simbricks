@@ -102,9 +102,9 @@ elif env.TARGET in ["sim", "tsim"]:
 # manageable chunks.
 
 # Fully connected layer dimensions: 1024 x 1024
-batch_size = 512
-in_channels = 4 * 1024
-out_channels = 4 * 1024
+batch_size = 1
+in_channels = 1 * 1024
+out_channels = 1 * 1024
 assert batch_size % env.BATCH == 0
 assert in_channels % env.BLOCK_IN == 0
 assert out_channels % env.BLOCK_OUT == 0
@@ -353,7 +353,7 @@ res_ref = res_ref.reshape(
 ).transpose((0, 2, 1, 3))
 
 # make a gem5 checkpoint
-if os.getenv("GEM5_CP"):
+if int(os.getenv("GEM5_CP", 0)):
     os.system("m5 checkpoint")
 
 # Clear stats
