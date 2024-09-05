@@ -75,9 +75,9 @@ env = vta.get_env()
 # manageable chunks.
 
 # Fully connected layer dimensions: 1024 x 1024
-batch_size = 512
-in_channels = 4 * 1024
-out_channels = 4 * 1024
+batch_size = 1
+in_channels = 1 * 1024
+out_channels = 1 * 1024
 assert batch_size % env.BATCH == 0
 assert in_channels % env.BLOCK_IN == 0
 assert out_channels % env.BLOCK_OUT == 0
@@ -344,7 +344,7 @@ weight_nd = tvm.nd.array(weight_packed, ctx)
 res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
 # make a gem5 checkpoint
-if os.getenv("GEM5_CP"):
+if int(os.getenv("GEM5_CP", 0)):
     os.system("m5 checkpoint")
 
 # Invoke the module to perform the computation
