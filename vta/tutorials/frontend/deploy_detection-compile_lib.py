@@ -50,7 +50,11 @@ def main():
 
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
-    targets = {"vta": env.target, "cpu": tvm.target.Target("llvm -keys=cpu")}
+    targets = {
+        "vta": env.target,
+        "cpu": tvm.target.Target("llvm -mcpu=skylake"),
+        "cpu-avx512": tvm.target.Target("llvm -mcpu=skylake-avx512")
+    }
 
     # Name of Darknet model to compile
     # The ``start_pack`` and ``stop_pack`` labels indicate where
