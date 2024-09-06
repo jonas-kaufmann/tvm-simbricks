@@ -33,6 +33,7 @@ from tvm.relay.testing.darknet import __darknetffi__
 from vta.top import graph_pack
 import sys
 import json
+import itertools
 
 MODEL_NAME = "yolov3-tiny"
 
@@ -55,6 +56,8 @@ def main():
         "cpu": tvm.target.Target("llvm -mcpu=skylake"),
         "cpu-avx512": tvm.target.Target("llvm -mcpu=skylake-avx512")
     }
+    bfactors = [1, 4, 8, 16]
+    cfactors = [16, 32]
 
     # Name of Darknet model to compile
     # The ``start_pack`` and ``stop_pack`` labels indicate where
@@ -87,12 +90,13 @@ def main():
     # 7. Generate graph executor, `m`.
 
     # Load pre-configured AutoTVM schedules
-    for target_name, target in targets.items():
+    for (target_name, target), bfactor, cfactor in itertools.product(
+            targets.items(), bfactors, cfactors):
         with autotvm.tophub.context(target):
             net = __darknetffi__.dlopen(darknet_lib_path).load_network(
                 cfg_path.encode("utf-8"), weights_path.encode("utf-8"), 0
             )
-            dshape = (env.BATCH, net.c, net.h, net.w)
+            dshape = (bfactor, net.c, net.h, net.w)
             dtype = "float32"
 
             # Measure build start time
@@ -117,8 +121,8 @@ def main():
                     # Perform graph packing and constant folding for VTA target
                     mod = graph_pack(
                         mod["main"],
-                        env.BATCH,
-                        env.BLOCK_OUT,
+                        bfactor,
+                        cfactor,
                         env.WGT_WIDTH,
                         start_name=pack_dict[MODEL_NAME][0],
                         stop_name=pack_dict[MODEL_NAME][1],
@@ -141,12 +145,14 @@ def main():
             # Measure Relay build time
             build_time = time.time() - build_start
             print(
-                f"{MODEL_NAME} inference graph for {target} built in"
-                f" {build_time:.2f}s!"
+                f"{MODEL_NAME} inference graph for {target} with config"
+                f" {cfactor}x{cfactor}x{bfactor} built in {build_time:.2f}s!"
             )
 
             # Export the inference library
-            lib.export_library(f"{darknet_dir}/graphlib_{target_name}.tar")
+            lib.export_library(
+                f"{darknet_dir}/graphlib_{target_name}_{cfactor}x{cfactor}x{bfactor}.tar"
+            )
 
             # Export network properties
             net_properties = {"neth": net.h, "netw": net.w}
