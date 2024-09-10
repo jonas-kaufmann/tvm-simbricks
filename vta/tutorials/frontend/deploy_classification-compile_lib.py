@@ -164,11 +164,11 @@ def main():
         accel_cfg = ""
         if target_name == "vta":
             accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
-        lib.export_library(f"{output_dir}/graphlib-{target_name}{accel_cfg}.so")
+        lib.export_library(f"{output_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so")
         for key in params.keys():
             params[key] = params[key].numpy().dumps()
         with open(
-            f"{output_dir}/params-{target_name}{accel_cfg}.dump", "wb"
+            f"{output_dir}/params-{model_name}-{target_name}{accel_cfg}.dump", "wb"
         ) as file:
             pickle.dump(params, file)
 
