@@ -63,6 +63,8 @@ def main():
     pack_dict = {
         "resnet18_v1": ["nn.max_pool2d", "nn.global_avg_pool2d"],
         "resnet34_v1": ["nn.max_pool2d", "nn.global_avg_pool2d"],
+        "resnet50_v1": ["nn.max_pool2d", "nn.global_avg_pool2d"],
+        "resnet101_v1": ["nn.max_pool2d", "nn.global_avg_pool2d"],
         "resnet18_v2": ["nn.max_pool2d", "nn.global_avg_pool2d"],
         "resnet34_v2": ["nn.max_pool2d", "nn.global_avg_pool2d"],
         "resnet50_v2": ["nn.max_pool2d", "nn.global_avg_pool2d"],
@@ -164,11 +166,14 @@ def main():
         accel_cfg = ""
         if target_name == "vta":
             accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
-        lib.export_library(f"{output_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so")
+        lib.export_library(
+            f"{output_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so"
+        )
         for key in params.keys():
             params[key] = params[key].numpy().dumps()
         with open(
-            f"{output_dir}/params-{model_name}-{target_name}{accel_cfg}.dump", "wb"
+            f"{output_dir}/params-{model_name}-{target_name}{accel_cfg}.dump",
+            "wb",
         ) as file:
             pickle.dump(params, file)
 
