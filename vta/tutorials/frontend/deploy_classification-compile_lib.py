@@ -169,13 +169,6 @@ def main():
         lib.export_library(
             f"{output_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so"
         )
-        for key in params.keys():
-            params[key] = params[key].numpy().dumps()
-        with open(
-            f"{output_dir}/params-{model_name}-{target_name}{accel_cfg}.dump",
-            "wb",
-        ) as file:
-            pickle.dump(params, file)
 
 
 if __name__ == "__main__":
