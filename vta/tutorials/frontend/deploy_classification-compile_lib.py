@@ -26,7 +26,6 @@ only supports int8/32 inference) as well as graph packing (in order to enable
 tensorization in the core) to massage the compute graph for the hardware target.
 """
 
-import pickle
 import sys
 import time
 

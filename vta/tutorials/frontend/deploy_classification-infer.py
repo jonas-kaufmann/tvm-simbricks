@@ -29,6 +29,7 @@ tensorization in the core) to massage the compute graph for the hardware target.
 import os
 import sys
 import time
+import random
 
 import numpy as np
 import vta
@@ -40,22 +41,21 @@ from tvm.contrib import graph_executor
 
 
 def main():
-    if len(sys.argv) != 8:
+    if len(sys.argv) != 9:
         print(
             "Usage: deploy_detection-infer.py <mxnet_dir> <target_name>"
-            " <model_name> <test_image> <batch_size> <repetitions> <debug>"
+            " <model_name> <test_image> <batch_size> <repetitions> <debug> <seed>"
         )
         sys.exit(1)
 
     mxnet_dir = sys.argv[1]
     target_name = sys.argv[2]
     model_name = sys.argv[3]
-    if target_name not in ["vta", "vta", "cpu_avx512"]:
-        print("Invalid argument for <device>")
     test_image = sys.argv[4]
     batch_size = int(sys.argv[5])
     reps = int(sys.argv[6])
     debug = int(sys.argv[7])
+    random.seed(int(sys.argv[8]))
 
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
@@ -65,7 +65,6 @@ def main():
     if target_name == "vta":
         accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
     graphlib = f"{mxnet_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so"
-    # params = np.load(f"{mxnet_dir}/params-{target_name}{accel_cfg}.dump")
 
     e2e_start = time.time_ns()
 
@@ -92,6 +91,9 @@ def main():
     assert tvm.runtime.enabled("rpc")
 
     for i in range(reps):
+        sleep_for = random.randint(0, 10)
+        print(f"Rep {i} sleeping for {sleep_for} s")
+        time.sleep(sleep_for)
         e2e_start = time.time_ns()
         request_start = time.time_ns()
         if tracker_host is None or tracker_port is None:
@@ -103,9 +105,6 @@ def main():
         request_dur = time.time_ns() - request_start
 
         # Send the inference library over to the remote RPC server
-        accel_cfg = ""
-        if target_name == "vta":
-            accel_cfg = f"{env.BATCH}x{env.BLOCK_OUT}-"
         upload_lib_start = time.time_ns()
         remote.upload(graphlib)
         lib = remote.load_module(os.path.basename(graphlib))
