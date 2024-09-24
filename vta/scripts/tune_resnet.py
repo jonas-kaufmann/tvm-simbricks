@@ -43,7 +43,7 @@ def parse_arguments():
         "--model",
         type=str,
         default="resnet18_v1",
-        choices=["resnet18_v1"],
+        choices=["resnet18_v1", "resnet34_v1"],
         help="Input model name.",
     )
     parser.add_argument(
@@ -76,7 +76,7 @@ def parse_arguments():
 
 
 def register_vta_tuning_tasks():
-    from tvm.autotvm.task.topi_integration import TaskExtractEnv, deserialize_args
+    from tvm.autotvm.task import TaskExtractEnv, deserialize_args
 
     @tvm.te.tag_scope(tag=topi.tag.ELEMWISE)
     def my_clip(x, a_min, a_max):
@@ -90,43 +90,59 @@ def register_vta_tuning_tasks():
     # init autotvm env to register VTA operator
     TaskExtractEnv()
 
-    @autotvm.task.register("topi_nn_conv2d", override=True)
+    # @autotvm.task.template("topi_nn_conv2d")
+    # def _topi_nn_conv2d(*args, **kwargs):
+    #     assert not kwargs, "Do not support kwargs in template function call"
+    #     args = deserialize_args(args)
+    #     A, W = args[:2]
+
+    #     with tvm.target.vta():
+    #         res = topi.nn.conv2d(*args, **kwargs)
+    #         res = topi.right_shift(res, 8)
+    #         res = my_clip(res, 0, 127)
+    #         res = topi.cast(res, "int8")
+
+    #     if tvm.target.Target.current().device_name == "vta":
+    #         s = topi.generic.schedule_conv2d_nchw([res])
+    #     else:
+    #         s = te.create_schedule([res.op])
+    #     return s, [A, W, res]
+
+    # @autotvm.task.template("topi_nn_dense")
+    # def _topi_nn_dense(*args, **kwargs):
+    #     assert not kwargs, "Do not support kwargs in template function call"
+    #     args = deserialize_args(args)
+    #     A, W = args[:2]
+
+    #     with tvm.target.vta():
+    #         res = topi.nn.dense(*args, **kwargs)
+    #         res = topi.right_shift(res, 8)
+    #         res = my_clip(res, 0, 127)
+    #         res = topi.cast(res, "int8")
+
+    #     if tvm.target.Target.current().device_name == "vta":
+    #         s = topi.generic.schedule_dense([res])
+    #     else:
+    #         s = te.create_schedule([res.op])
+
+    #     return s, [A, W, res]
+
+    @autotvm.template("conv2d_packed.vta")
     def _topi_nn_conv2d(*args, **kwargs):
         assert not kwargs, "Do not support kwargs in template function call"
-        args = deserialize_args(args)
         A, W = args[:2]
 
         with tvm.target.vta():
-            res = topi.nn.conv2d(*args, **kwargs)
+            res = vta.top.conv2d_packed(*args, **kwargs)
             res = topi.right_shift(res, 8)
             res = my_clip(res, 0, 127)
             res = topi.cast(res, "int8")
 
         if tvm.target.Target.current().device_name == "vta":
-            s = topi.generic.schedule_conv2d_nchw([res])
+            s = vta.top.schedule_conv2d_packed([res])
         else:
             s = te.create_schedule([res.op])
         return s, [A, W, res]
-
-    @autotvm.task.register("topi_nn_dense", override=True)
-    def _topi_nn_dense(*args, **kwargs):
-        assert not kwargs, "Do not support kwargs in template function call"
-        args = deserialize_args(args)
-        A, W = args[:2]
-
-        with tvm.target.vta():
-            res = topi.nn.dense(*args, **kwargs)
-            res = topi.right_shift(res, 8)
-            res = my_clip(res, 0, 127)
-            res = topi.cast(res, "int8")
-
-        if tvm.target.Target.current().device_name == "vta":
-            s = topi.generic.schedule_dense([res])
-        else:
-            s = te.create_schedule([res.op])
-
-        return s, [A, W, res]
-
 
 def compile_network(opt, env, target):
 
@@ -146,13 +162,13 @@ def compile_network(opt, env, target):
     # Note: We set opt_level to 3 in order to fold batch norm
     with tvm.transform.PassContext(opt_level=3):
         with relay.quantize.qconfig(global_scale=8.0, skip_conv_layers=[0]):
-            relay_prog = relay.quantize.quantize(mod["main"], params=params)
+            mod = relay.quantize.quantize(mod, params=params)
 
     # Perform graph packing and constant folding for VTA target
     if target.device_name == "vta":
         assert env.BLOCK_IN == env.BLOCK_OUT
         relay_prog = graph_pack(
-            relay_prog,
+            mod["main"],
             env.BATCH,
             env.BLOCK_OUT,
             env.WGT_WIDTH,
@@ -255,7 +271,7 @@ if __name__ == "__main__":
         exit()
 
     # Get remote
-    if env.TARGET != "sim":
+    if env.TARGET != "sim" and env.TARGET != "tsim":
 
         # Measure build start time
         reconfig_start = time.time()
@@ -293,10 +309,11 @@ if __name__ == "__main__":
     # Perform task extraction on Relay program
     print("Extracting tasks...")
     tasks = extract_from_program(
-        func=relay_prog,
+        mod=relay_prog,
         params=params,
         ops=(relay.op.get("nn.conv2d"),),
-        target=tvm.target.Target(target, host=env.target_host),
+        target=target,
+        target_host=env.target_host
     )
 
     # Perform Autotuning
@@ -307,11 +324,11 @@ if __name__ == "__main__":
         "n_trial": 1e9,
         "early_stopping": None,
         "measure_option": autotvm.measure_option(
-            builder=autotvm.LocalBuilder(build_func=vta.vta_autotvm_build_func),
+            builder=autotvm.LocalBuilder(),
             runner=autotvm.RPCRunner(
                 env.TARGET,
                 tracker_host,
-                tracker_port,
+                int(tracker_port),
                 number=4,
                 min_repeat_ms=150,
                 repeat=opt.measurements,
@@ -335,7 +352,7 @@ if __name__ == "__main__":
                     params=params,
                 )
         else:
-            with vta.build_config(opt_level=3, disabled_pass={"AlterOpLayout"}):
+            with vta.build_config(opt_level=3, disabled_pass={"AlterOpLayout", "tir.CommonSubexprElimTIR"}):
                 graph, lib, params = relay.build(
                     relay_prog,
                     target=tvm.target.Target(target, host=env.target_host),
