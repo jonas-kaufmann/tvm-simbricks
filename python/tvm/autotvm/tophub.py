@@ -25,6 +25,7 @@ TVM will download these parameters for you when you call relay.build.
 import logging
 from os import getenv
 import sys
+import os
 from pathlib import Path
 
 from .task import ApplyHistoryBest
@@ -122,7 +123,9 @@ def context(target, extra_files=None):
 
     if extra_files:
         for filename in extra_files:
-            best_context.load(filename)
+            print(f"filename={filename}")
+            if os.path.exists(filename):
+                best_context.load(filename)
 
     return best_context
 
