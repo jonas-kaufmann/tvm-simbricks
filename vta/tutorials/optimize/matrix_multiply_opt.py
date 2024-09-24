@@ -38,31 +38,18 @@ limited hardware accelerator resources.
 from __future__ import absolute_import, print_function
 
 import os
-import tvm
-from tvm import te
-import vta
-import numpy as np
-from tvm import autotvm, rpc
-from tvm.contrib import utils
-from vta.testing import simulator
 import time
+
+import numpy as np
+import vta
+from vta.testing import simulator
+
+import tvm
+from tvm import autotvm, rpc, te
+from tvm.contrib import utils
 
 # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
 env = vta.get_env()
-
-# Set up RPC connection to remote
-tracker_host = os.environ.get("TVM_TRACKER_HOST", None)
-tracker_port = os.environ.get("TVM_TRACKER_PORT", None)
-# If above are unset, connect to device directly
-device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
-device_port = os.environ.get("VTA_RPC_PORT", "9091")
-assert tvm.runtime.enabled("rpc")
-if tracker_host is None or tracker_port is None:
-    remote = rpc.connect(device_host, int(device_port))
-else:
-    remote = autotvm.measure.request_remote(
-        env.TARGET, tracker_host, int(tracker_port), timeout=10
-    )
 
 ######################################################################
 # Computation Declaration
@@ -304,31 +291,10 @@ s[res_max].pragma(s[res_max].op.axis[0], env.alu)
 my_gemm = vta.build(
     s, [data, weight, res], tvm.target.Target("ext_dev", host=env.target_host), name="my_gemm"
 )
-temp = utils.tempdir()
-my_gemm.save(temp.relpath("gemm.o"))
-remote.upload(temp.relpath("gemm.o"))
-print(f'')
-f = remote.load_module("gemm.o")
-
-# Get the remote device context
-ctx = remote.ext_dev(0)
 
 # Initialize the data and weight arrays randomly in the int range of (-128, 128]
 data_np = np.random.randint(-128, 128, size=(batch_size, in_channels)).astype(data.dtype)
 weight_np = np.random.randint(-128, 128, size=(out_channels, in_channels)).astype(weight.dtype)
-
-# Apply packing to the data and weight arrays from a 2D to a 4D packed layout
-data_packed = data_np.reshape(
-    batch_size // env.BATCH, env.BATCH, in_channels // env.BLOCK_IN, env.BLOCK_IN
-).transpose((0, 2, 1, 3))
-weight_packed = weight_np.reshape(
-    out_channels // env.BLOCK_OUT, env.BLOCK_OUT, in_channels // env.BLOCK_IN, env.BLOCK_IN
-).transpose((0, 2, 1, 3))
-
-# Format the input/output arrays with tvm.nd.array to the DLPack standard
-data_nd = tvm.nd.array(data_packed, ctx)
-weight_nd = tvm.nd.array(weight_packed, ctx)
-res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
 # Compute reference with numpy
 res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
@@ -339,33 +305,56 @@ res_ref = res_ref.reshape(
     batch_size // env.BATCH, env.BATCH, out_channels // env.BLOCK_OUT, env.BLOCK_OUT
 ).transpose((0, 2, 1, 3))
 
-# make a gem5 checkpoint
-if os.getenv("GEM5_CP"):
-    os.system("m5 checkpoint")
+# Apply packing to the data and weight arrays from a 2D to a 4D packed layout
+data_packed = data_np.reshape(
+    batch_size // env.BATCH, env.BATCH, in_channels // env.BLOCK_IN, env.BLOCK_IN
+).transpose((0, 2, 1, 3))
+weight_packed = weight_np.reshape(
+    out_channels // env.BLOCK_OUT, env.BLOCK_OUT, in_channels // env.BLOCK_IN, env.BLOCK_IN
+).transpose((0, 2, 1, 3))
 
-# Clear stats
-if env.TARGET in ["sim", "tsim"]:
-    simulator.clear_stats()
+# Set up RPC connection to remote
+tracker_host = os.environ.get("TVM_TRACKER_HOST", None)
+tracker_port = os.environ.get("TVM_TRACKER_PORT", None)
+# If above are unset, connect to device directly
+device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
+device_port = os.environ.get("VTA_RPC_PORT", "9091")
+assert tvm.runtime.enabled("rpc")
+if tracker_host is None or tracker_port is None:
+    remote = rpc.connect(device_host, int(device_port))
+else:
+    request_start = time.time_ns()
+    remote = autotvm.measure.request_remote(
+        env.TARGET, tracker_host, int(tracker_port), timeout=5
+    )
+    request_dur = time.time_ns() - request_start
+    print(f"Requesting remote from tracker took {request_dur:_} ns")
+
+temp = utils.tempdir()
+my_gemm.save(temp.relpath("gemm.o"))
+remote.upload(temp.relpath("gemm.o"))
+f = remote.load_module("gemm.o")
+
+# Get the remote device context
+ctx = remote.ext_dev(0)
+
+# Format the input/output arrays with tvm.nd.array to the DLPack standard
+data_nd = tvm.nd.array(data_packed, ctx)
+weight_nd = tvm.nd.array(weight_packed, ctx)
+res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
 # Invoke the module to perform the computation
 start_ns = time.time_ns()
 f(data_nd, weight_nd, res_nd)
 end_ns = time.time_ns()
-print(f"Duration: {end_ns - start_ns} ns")
+print(f"Duration for invoking VTA: {(end_ns - start_ns):_} ns")
+
+# release resources
+del ctx
+del remote
 
 # Verify against numpy implementation
 np.testing.assert_equal(res_ref, res_nd.numpy())
-
-# make gem5 exit
-if os.getenv("GEM5_CP"):
-    os.system("m5 exit")
-
-# Print stats
-if env.TARGET in ["sim", "tsim"]:
-    sim_stats = simulator.stats()
-    print("Execution statistics:")
-    for k, v in sim_stats.items():
-        print("\t{:<16}: {:>16}".format(k, v))
 
 print("Successful blocked matrix multiply test!")
 
