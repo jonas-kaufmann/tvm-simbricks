@@ -41,21 +41,23 @@ from tvm.contrib import graph_executor
 
 
 def main():
-    if len(sys.argv) != 9:
+    if len(sys.argv) != 10:
         print(
             "Usage: deploy_detection-infer.py <mxnet_dir> <target_name>"
-            " <model_name> <test_image> <batch_size> <repetitions> <debug> <seed>"
+            " <target_name_host> <model_name> <test_image> <batch_size>"
+            " <repetitions> <debug> <seed>"
         )
         sys.exit(1)
 
     mxnet_dir = sys.argv[1]
     target_name = sys.argv[2]
-    model_name = sys.argv[3]
-    test_image = sys.argv[4]
-    batch_size = int(sys.argv[5])
-    reps = int(sys.argv[6])
-    debug = int(sys.argv[7])
-    random.seed(int(sys.argv[8]))
+    target_name_host = sys.argv[3]
+    model_name = sys.argv[4]
+    test_image = sys.argv[5]
+    batch_size = int(sys.argv[6])
+    reps = int(sys.argv[7])
+    debug = int(sys.argv[8])
+    random.seed(int(sys.argv[9]))
 
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
@@ -64,7 +66,7 @@ def main():
     accel_cfg = ""
     if target_name == "vta":
         accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
-    graphlib = f"{mxnet_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so"
+    graphlib = f"{mxnet_dir}/graphlib-{model_name}-{target_name}-{target_name_host}{accel_cfg}.so"
 
     e2e_start = time.time_ns()
 
