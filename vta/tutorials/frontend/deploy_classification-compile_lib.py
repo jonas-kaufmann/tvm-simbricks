@@ -35,26 +35,30 @@ from vta.top import graph_pack
 
 import tvm
 from tvm import autotvm, relay
+from tvm.contrib import cc
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         print(
-            "Usage: deploy_classification-compile_lib.py <target_name>"
-            " <model_name> <output_dir>"
+            "Usage: deploy_classification-compile_lib.py"
+            " <target_name_main_inference_device>"
+            " <target_name_host> <model_name> <output_dir>"
         )
         sys.exit(1)
 
     target_name = sys.argv[1]
-    model_name = sys.argv[2]
-    output_dir = sys.argv[3]
+    target_name_host = sys.argv[2]
+    model_name = sys.argv[3]
+    output_dir = sys.argv[4]
 
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
     targets = {
         "vta": env.target,
-        "cpu": tvm.target.Target("llvm -mcpu=skylake"),
+        "cpu": tvm.target.Target("llvm"),
         "cpu_avx512": tvm.target.Target("llvm -mcpu=skylake-avx512"),
+        "cpu_arm64": tvm.target.Target("llvm -mtriple=aarch64-linux-gnu"),
     }
     target = targets[target_name]
 
@@ -140,7 +144,7 @@ def main():
             ):
                 lib = relay.build(
                     relay_prog,
-                    target=tvm.target.Target(target, host=env.target_host),
+                    target=target,
                     params=params,
                 )
         else:
@@ -150,7 +154,7 @@ def main():
             ):
                 lib = relay.build(
                     relay_prog,
-                    target=tvm.target.Target(target, host=env.target_host),
+                    target=tvm.target.Target(target, targets[target_name_host]),
                     params=params,
                 )
 
@@ -165,8 +169,12 @@ def main():
         accel_cfg = ""
         if target_name == "vta":
             accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
+        fcompile = cc.create_shared
+        if target_name_host == "cpu_arm64":
+            fcompile = cc.cross_compiler("aarch64-linux-gnu-gcc")
         lib.export_library(
-            f"{output_dir}/graphlib-{model_name}-{target_name}{accel_cfg}.so"
+            f"{output_dir}/graphlib-{model_name}-{target_name}-{target_name_host}{accel_cfg}.so",
+            fcompile=fcompile,
         )
 
 
