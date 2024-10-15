@@ -353,10 +353,6 @@ f(data_nd, weight_nd, res_nd)
 end_ns = time.time_ns()
 print(f"Duration for invoking VTA: {(end_ns - start_ns):_} ns")
 
-# release resources
-del ctx
-del remote
-
 # Verify against numpy implementation
 np.testing.assert_equal(res_ref, res_nd.numpy())
 
