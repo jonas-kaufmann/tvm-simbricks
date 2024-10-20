@@ -91,7 +91,7 @@ def main():
     assert tvm.runtime.enabled("rpc")
 
     for i in range(reps):
-        sleep_for = random.randint(0, 10)
+        sleep_for = 0
         print(f"Rep {i} sleeping for {sleep_for} s")
         time.sleep(sleep_for)
         e2e_start = time.time_ns()
