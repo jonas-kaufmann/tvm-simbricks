@@ -120,6 +120,8 @@ def main():
         m = graph_executor.GraphModule(lib["default"](ctx))
 
         num_inferences = batch_size // env.BATCH
+        if int(os.getenv("GEM5_CP", 0)):
+            os.system("m5 checkpoint")
         inference_start = time.time_ns()
         for j in range(num_inferences):
             # Set the network parameters and inputs
@@ -155,6 +157,9 @@ def main():
             print(
                 f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
             )
+
+    if int(os.getenv("GEM5_CP", 0)):
+        os.system('m5 exit')
 
 
 if __name__ == "__main__":
