@@ -122,8 +122,7 @@ def main():
 
         # Send the inference library over to the remote RPC server
         upload_lib_start = time.time_ns()
-        remote.upload(f"{darknet_dir}/graphlib_{device}.tar")
-        lib = remote.load_module(f"graphlib_{device}.tar")
+        lib = remote.load_module(f"{darknet_dir}/graphlib_{device}.tar")
         upload_lib_dur = time.time_ns() - upload_lib_start
 
         # Request remote device
