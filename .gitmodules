@@ -28,3 +28,6 @@
 [submodule "3rdparty/libflash_attn"]
 	path = 3rdparty/libflash_attn
 	url = https://github.com/tlc-pack/libflash_attn
+[submodule "3rdparty/cma_malloc"]
+	path = 3rdparty/cma_malloc
+	url = https://github.com/jonas-kaufmann/cma_malloc.git
