@@ -16,3 +16,6 @@
 [submodule "3rdparty/cutlass"]
 	path = 3rdparty/cutlass
 	url = https://github.com/NVIDIA/cutlass
+[submodule "3rdparty/cma_malloc"]
+	path = 3rdparty/cma_malloc
+	url = https://github.com/jonas-kaufmann/cma_malloc.git
