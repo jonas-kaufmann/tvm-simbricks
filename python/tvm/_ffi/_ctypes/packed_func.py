@@ -81,6 +81,7 @@ def convert_to_tvm_func(pyfunc):
         try:
             rv = local_pyfunc(*pyargs)
         except Exception as err:
+            traceback.print_exc()
             msg = traceback.format_exc()
             msg = py2cerror(msg)
             _LIB.TVMAPISetLastPythonError(ctypes.py_object(err))
