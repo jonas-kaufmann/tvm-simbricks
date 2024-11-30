@@ -67,6 +67,8 @@ def main():
     if target_name == "vta":
         accel_cfg = f"-{env.BATCH}x{env.BLOCK_OUT}"
     graphlib = f"{mxnet_dir}/graphlib-{model_name}-{target_name}-{target_name_host}{accel_cfg}.so"
+    if not os.path.isfile(graphlib):
+        raise RuntimeError(f"graphlib at path {graphlib} does not exist")
 
     e2e_start = time.time_ns()
 
