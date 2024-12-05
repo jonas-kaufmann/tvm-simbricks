@@ -94,8 +94,13 @@ def main():
     device_port = os.environ.get("VTA_RPC_PORT", "9091")
     assert tvm.runtime.enabled("rpc")
 
+    # dump stats every 10 ms
+    if os.getenv("SIMULATOR", None) == "gem5":
+        os.system("m5 resetstats; m5 dumpstats 0 10000000")
+
     for i in range(reps):
-        sleep_for = random.randint(0, 10)
+        # sleep_for = random.randint(0, 10)
+        sleep_for = 0
         print(f"Rep {i} sleeping for {sleep_for} s")
         time.sleep(sleep_for)
         e2e_start = time.time_ns()
@@ -158,6 +163,9 @@ def main():
             print(
                 f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
             )
+
+    if os.getenv("SIMULATOR", None) == "gem5":
+        os.system("m5 exit")
 
 
 if __name__ == "__main__":
