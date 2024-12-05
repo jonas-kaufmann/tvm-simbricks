@@ -313,6 +313,10 @@ weight_packed = weight_np.reshape(
     out_channels // env.BLOCK_OUT, env.BLOCK_OUT, in_channels // env.BLOCK_IN, env.BLOCK_IN
 ).transpose((0, 2, 1, 3))
 
+temp = utils.tempdir()
+module_path = temp.relpath("gemm.so")
+my_gemm.save(module_path)
+
 # Set up RPC connection to remote
 tracker_host = os.environ.get("TVM_TRACKER_HOST", None)
 tracker_port = os.environ.get("TVM_TRACKER_PORT", None)
@@ -330,10 +334,8 @@ else:
     request_dur = time.time_ns() - request_start
     print(f"Requesting remote from tracker took {request_dur:_} ns")
 
-temp = utils.tempdir()
-my_gemm.save(temp.relpath("gemm.o"))
-remote.upload(temp.relpath("gemm.o"))
-f = remote.load_module("gemm.o")
+# Load library on remote
+f = remote.load_module(module_path)
 
 # Get the remote device context
 ctx = remote.ext_dev(0)
