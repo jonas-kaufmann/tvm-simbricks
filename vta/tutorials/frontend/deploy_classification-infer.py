@@ -95,6 +95,7 @@ def main():
     assert tvm.runtime.enabled("rpc")
 
     # dump stats every 10 ms
+    print(f"AC/DSim START TS {time.time_ns()}")
     if os.getenv("SIMULATOR", None) == "gem5":
         os.system("m5 resetstats; m5 dumpstats 0 10000000")
 
@@ -164,6 +165,7 @@ def main():
                 f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
             )
 
+    print(f"AC/DSim STOP TS {time.time_ns()}")
     if os.getenv("SIMULATOR", None) == "gem5":
         os.system("m5 exit")
 
