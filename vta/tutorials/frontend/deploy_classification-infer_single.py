@@ -166,6 +166,8 @@ def main():
     inference_dur = time.time_ns() - inference_start
     print(f"Actual inference w/ accelerator duration {inference_dur} ns")
 
+    remote._sess.get_function("CloseRPCConnection")()
+
     if not debug:
         return
 
