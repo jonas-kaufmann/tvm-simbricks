@@ -59,6 +59,9 @@ def main():
     debug = int(sys.argv[8])
     random.seed(int(sys.argv[9]))
 
+    is_gem5 = os.getenv("SIMULATOR", None) == "gem5"
+    is_tracing = bool(os.getenv("TRACE_ENABLED", 0))
+
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
 
@@ -77,9 +80,7 @@ def main():
     image = image.transpose((2, 0, 1))
     image = image[np.newaxis, :]
     image = np.repeat(image, env.BATCH, axis=0)
-    assert (
-        batch_size % env.BATCH == 0
-    ), f"batch_size={batch_size} env.BATCH={env.BATCH}"
+    assert batch_size % env.BATCH == 0, f"batch_size={batch_size} env.BATCH={env.BATCH}"
 
     #######################################################################
     # Connect to tracker or RPC server and request remote inference device.
@@ -91,11 +92,6 @@ def main():
     device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
     device_port = os.environ.get("VTA_RPC_PORT", "9091")
     assert tvm.runtime.enabled("rpc")
-
-    # dump stats every 10 ms
-    print(f"AC/DSim START TS {time.time_ns()}")
-    if os.getenv("SIMULATOR", None) == "gem5":
-        os.system("m5 resetstats; m5 dumpstats 0 10000000")
 
     request_start = time.time_ns()
     if tracker_host is None or tracker_port is None:
@@ -137,7 +133,12 @@ def main():
     inference_dur = time.time_ns() - inference_start
     print(f"Warmup inference duration {inference_dur} ns")
 
+    # dump stats every 10 ms
+    if is_gem5 and is_tracing:
+        os.system("m5 resetstats; m5 dumpstats 0 10000000")
+
     # actual inference w/o accelerator
+    print(f"AC/DSim W/O ACCEL START TS {time.time_ns()}")
     inference_start = time.time_ns()
     for _ in range(num_inferences):
         # Set the network parameters and inputs
@@ -150,8 +151,19 @@ def main():
         ).numpy()
     inference_dur = time.time_ns() - inference_start
     print(f"Actual inference w/o accelerator duration {inference_dur} ns")
+    print(f"AC/DSim W/O ACCEL STOP TS {time.time_ns()}")
+
+    # sleep and disable tracing as a marker in trace
+    if is_gem5 and is_tracing:
+        os.system("m5 dumpstats 0 1000000000")
+    time.sleep(0.5)
+
+    # dump stats every 10 ms
+    if is_gem5 and is_tracing:
+        os.system("m5 resetstats; m5 dumpstats 0 10000000")
 
     # actual inference w/ accelerator
+    print(f"AC/DSim START TS {time.time_ns()}")
     os.remove("/tmp/vta_dry_run")
     inference_start = time.time_ns()
     for _ in range(num_inferences):
@@ -165,26 +177,26 @@ def main():
         ).numpy()
     inference_dur = time.time_ns() - inference_start
     print(f"Actual inference w/ accelerator duration {inference_dur} ns")
+    print(f"AC/DSim STOP TS {time.time_ns()}")
+
+    # disable tracing
+    if is_gem5 and is_tracing:
+        os.system("m5 dumpstats 0")
 
     remote._sess.get_function("CloseRPCConnection")()
 
-    if not debug:
-        return
+    if debug:
+        # read classification categories
+        synset = eval(open(f"{mxnet_dir}/synset.txt").read())
 
-    # read classification categories
-    synset = eval(open(f"{mxnet_dir}/synset.txt").read())
+        # Report top-5 classification results
+        for b in range(env.BATCH):
+            top_categories = np.argsort(tvm_output[b])
+            print(f"\nprediction for sample {b}")
+            for i in range(1, 6):
+                print(f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}")
 
-    # Report top-5 classification results
-    for b in range(env.BATCH):
-        top_categories = np.argsort(tvm_output[b])
-        print(f"\nprediction for sample {b}")
-        for i in range(1, 6):
-            print(
-                f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
-            )
-
-    print(f"AC/DSim STOP TS {time.time_ns()}")
-    if os.getenv("SIMULATOR", None) == "gem5":
+    if is_gem5:
         os.system("m5 exit")
 
 
