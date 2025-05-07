@@ -132,31 +132,7 @@ def main():
         ).numpy()
     inference_dur = time.time_ns() - inference_start
     print(f"Warmup inference duration {inference_dur} ns")
-
-    # dump stats every 10 ms
-    if is_gem5 and is_tracing:
-        os.system("m5 resetstats; m5 dumpstats 0 10000000")
-
-    # actual inference w/o accelerator
-    print(f"AC/DSim W/O ACCEL START TS {time.time_ns()}")
-    inference_start = time.time_ns()
-    for _ in range(num_inferences):
-        # Set the network parameters and inputs
-        m.set_input("data", image)
-        # Perform inference
-        m.run()
-        # Get output
-        tvm_output = m.get_output(
-            0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
-        ).numpy()
-    inference_dur = time.time_ns() - inference_start
-    print(f"Actual inference w/o accelerator duration {inference_dur} ns")
-    print(f"AC/DSim W/O ACCEL STOP TS {time.time_ns()}")
-
-    # sleep and disable tracing as a marker in trace
-    if is_gem5 and is_tracing:
-        os.system("m5 dumpstats 0 1000000000")
-    time.sleep(0.5)
+    os.remove("/tmp/vta_dry_run")
 
     # dump stats every 10 ms
     if is_gem5 and is_tracing:
@@ -164,7 +140,6 @@ def main():
 
     # actual inference w/ accelerator
     print(f"AC/DSim START TS {time.time_ns()}")
-    os.remove("/tmp/vta_dry_run")
     inference_start = time.time_ns()
     for _ in range(num_inferences):
         # Set the network parameters and inputs
@@ -183,6 +158,7 @@ def main():
     if is_gem5 and is_tracing:
         os.system("m5 dumpstats 0")
 
+    # This invokes the cleanup functions in the driver and prints stats
     remote._sess.get_function("CloseRPCConnection")()
 
     if debug:
