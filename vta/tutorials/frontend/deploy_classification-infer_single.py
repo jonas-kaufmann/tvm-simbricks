@@ -29,7 +29,7 @@ tensorization in the core) to massage the compute graph for the hardware target.
 import os
 import sys
 import time
-import random
+import itertools
 
 import numpy as np
 import vta
@@ -41,11 +41,10 @@ from tvm.contrib import graph_executor
 
 
 def main():
-    if len(sys.argv) != 10:
+    if len(sys.argv) < 6:
         print(
             "Usage: deploy_detection-infer.py <mxnet_dir> <target_name>"
-            " <target_name_host> <model_name> <test_image> <batch_size>"
-            " <repetitions> <debug> <seed>"
+            " <target_name_host> <model_name> <test_image ...>"
         )
         sys.exit(1)
 
@@ -53,11 +52,7 @@ def main():
     target_name = sys.argv[2]
     target_name_host = sys.argv[3]
     model_name = sys.argv[4]
-    test_image = sys.argv[5]
-    batch_size = int(sys.argv[6])
-    reps = int(sys.argv[7])
-    debug = int(sys.argv[8])
-    random.seed(int(sys.argv[9]))
+    test_images = sys.argv[5:]
 
     is_gem5 = os.getenv("SIMULATOR", None) == "gem5"
     is_tracing = bool(os.getenv("TRACE_ENABLED", 0))
@@ -74,13 +69,18 @@ def main():
         raise RuntimeError(f"graphlib at path {graphlib} does not exist")
 
     # Prepare test image for inference
-    image = Image.open(test_image).resize((224, 224))
-    image = np.array(image) - np.array([123.0, 117.0, 104.0])
-    image /= np.array([58.395, 57.12, 57.375])
-    image = image.transpose((2, 0, 1))
-    image = image[np.newaxis, :]
-    image = np.repeat(image, env.BATCH, axis=0)
-    assert batch_size % env.BATCH == 0, f"batch_size={batch_size} env.BATCH={env.BATCH}"
+    batches = []
+    for i, img_path in enumerate(test_images):
+        image = Image.open(img_path).resize((224, 224))
+        image = np.array(image) - np.array([123.0, 117.0, 104.0])
+        image /= np.array([58.395, 57.12, 57.375])
+        image = image.transpose((2, 0, 1))
+        if i % env.BATCH == 0:
+            batch = image[np.newaxis, :]
+            batch = np.repeat(batch, env.BATCH, axis=0)
+            batches.append(batch)
+        else:
+            batches[i // env.BATCH][i % env.BATCH] = image
 
     #######################################################################
     # Connect to tracker or RPC server and request remote inference device.
@@ -112,8 +112,6 @@ def main():
     print(f"Requesting remote device {request_dur:_} ns")
     print(f"Sending and loading model {upload_lib_dur:_} ns")
 
-    num_inferences = batch_size // env.BATCH
-
     # Everything connected, take a checkpoint
     if os.getenv("SIMULATOR", None) == "gem5":
         os.system("m5 checkpoint")
@@ -121,15 +119,17 @@ def main():
     # Warmup inference
     os.mknod("/tmp/vta_dry_run")
     inference_start = time.time_ns()
-    for _ in range(num_inferences):
+    inference_output = []
+    for i, batch in enumerate(batches):
         # Set the network parameters and inputs
-        m.set_input("data", image)
+        m.set_input("data", batch)
         # Perform inference
         m.run()
         # Get output
-        tvm_output = m.get_output(
-            0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
-        ).numpy()
+        inference_output.append(
+            m.get_output(0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))).numpy()
+        )
+        print(f"Batch {i} / {len(batches) - 1} done")
     inference_dur = time.time_ns() - inference_start
     print(f"Warmup inference duration {inference_dur} ns")
     os.remove("/tmp/vta_dry_run")
@@ -141,15 +141,17 @@ def main():
     # actual inference w/ accelerator
     print(f"AC/DSim START TS {time.time_ns()}")
     inference_start = time.time_ns()
-    for _ in range(num_inferences):
+    inference_output = []
+    for i, batch in enumerate(batches):
         # Set the network parameters and inputs
-        m.set_input("data", image)
+        m.set_input("data", batch)
         # Perform inference
         m.run()
         # Get output
-        tvm_output = m.get_output(
-            0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
-        ).numpy()
+        inference_output.append(
+            m.get_output(0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))).numpy()
+        )
+        print(f"Batch {i} / {len(batches) - 1} done")
     inference_dur = time.time_ns() - inference_start
     print(f"Actual inference w/ accelerator duration {inference_dur} ns")
     print(f"AC/DSim STOP TS {time.time_ns()}")
@@ -161,16 +163,17 @@ def main():
     # This invokes the cleanup functions in the driver and prints stats
     remote._sess.get_function("CloseRPCConnection")()
 
-    if debug:
-        # read classification categories
-        synset = eval(open(f"{mxnet_dir}/synset.txt").read())
+    # read classification categories
+    synset = eval(open(f"{mxnet_dir}/synset.txt").read())
 
-        # Report top-5 classification results
-        for b in range(env.BATCH):
-            top_categories = np.argsort(tvm_output[b])
-            print(f"\nprediction for sample {b}")
-            for i in range(1, 6):
-                print(f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}")
+    # Report top-5 classification results
+    for i, j in itertools.product(range(len(inference_output)), range(env.BATCH)):
+        top_categories = np.argsort(inference_output[i][j])
+        print(f"\nprediction for image {i * env.BATCH + j}")
+        for k in range(1, 6):
+            print(
+                f"\t#{k}:{synset[top_categories[-k]]} {inference_output[i][j][top_categories[-k]]}"
+            )
 
     if is_gem5:
         os.system("m5 exit")
