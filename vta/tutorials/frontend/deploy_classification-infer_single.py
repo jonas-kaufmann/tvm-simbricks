@@ -117,19 +117,15 @@ def main():
         os.system("m5 checkpoint")
 
     # Warmup inference
-    os.mknod("/tmp/vta_dry_run")
+    if not os.path.exists("/tmp/vta_dry_run"):
+        os.mknod("/tmp/vta_dry_run")
     inference_start = time.time_ns()
-    inference_output = []
-    for i, batch in enumerate(batches):
-        # Set the network parameters and inputs
-        m.set_input("data", batch)
-        # Perform inference
-        m.run()
-        # Get output
-        inference_output.append(
-            m.get_output(0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))).numpy()
-        )
-        print(f"Batch {i} / {len(batches) - 1} done")
+    # Set the network parameters and inputs
+    m.set_input("data", batches[0])
+    # Perform inference
+    m.run()
+    # Get output
+    _ = m.get_output(0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))).numpy()
     inference_dur = time.time_ns() - inference_start
     print(f"Warmup inference duration {inference_dur} ns")
     os.remove("/tmp/vta_dry_run")
@@ -153,7 +149,7 @@ def main():
         )
         print(f"Batch {i} / {len(batches) - 1} done")
     inference_dur = time.time_ns() - inference_start
-    print(f"Actual inference w/ accelerator duration {inference_dur} ns")
+    print(f"Actual inference duration {inference_dur} ns")
     print(f"AC/DSim STOP TS {time.time_ns()}")
 
     # disable tracing
