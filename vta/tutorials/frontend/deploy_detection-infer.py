@@ -56,8 +56,10 @@ def main():
     if device not in ["cpu", "vta"]:
         print('Device has to be "cpu" or "vta"')
     test_image = sys.argv[3]
-    batch_size = int(sys.argv[4])
+    # batch_size = int(sys.argv[4])
+    batch_size = 1
     reps = int(sys.argv[5])
+    reps = 1
     debug = int(sys.argv[6])
     random.seed(int(sys.argv[7]))
 
@@ -109,9 +111,9 @@ def main():
     assert tvm.runtime.enabled("rpc")
 
     for i in range(reps):
-        sleep_for = random.randint(0, 10)
-        print(f"Rep {i} sleeping for {sleep_for} s")
-        time.sleep(sleep_for)
+        # sleep_for = random.randint(0, 10)
+        # print(f"Rep {i} sleeping for {sleep_for} s")
+        # time.sleep(sleep_for)
         e2e_start = time.time_ns()
         request_start = time.time_ns()
         if tracker_host is None or tracker_port is None:
@@ -122,8 +124,7 @@ def main():
 
         # Send the inference library over to the remote RPC server
         upload_lib_start = time.time_ns()
-        remote.upload(f"{darknet_dir}/graphlib_{device}.tar")
-        lib = remote.load_module(f"graphlib_{device}.tar")
+        lib = remote.load_module(f"{darknet_dir}/graphlib_{device}.tar")
         upload_lib_dur = time.time_ns() - upload_lib_start
 
         # Request remote device
@@ -136,23 +137,55 @@ def main():
         m = graph_executor.GraphModule(lib["default"](ctx))
         
         num_inferences = batch_size // env.BATCH
+        print(f"Rep {i}: Running {num_inferences} inferences")
+
+        if int(os.getenv("GEM5_CP", 0)):
+            print("Checkpointing gem5")
+            os.system("m5 checkpoint")
+        # run once, no measurements
+        warmup_start = time.time_ns()
+        m.set_input("data", data)
+        # m.run()
+        print("Warm up finished")
         inference_start = time.time_ns()
-        for j in range(num_inferences):
+        # for j in range(num_inferences):
             # Set the network parameters and inputs
-            m.set_input("data", data)
             # Perform inference
-            m.run()
+        m.run()
         inference_dur = time.time_ns() - inference_start
 
         # release resources
-        remote._sess.get_function("CloseRPCConnection")()
+       
 
         e2e_dur = time.time_ns() - e2e_start
         print(f"Rep {i}: Requesting remote device {request_dur:_} ns")
         print(f"Rep {i}: Sending and loading model {upload_lib_dur:_} ns")
+        print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
         print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
         print(f"Rep {i}: End-to-end latency: {e2e_dur:_} ns")
 
+        for i in range(2):
+            warmup_start = time.time_ns()
+            m.set_input("data", data)
+            inference_start = time.time_ns()
+            m.run()
+            inference_dur = time.time_ns() - inference_start
+
+            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
+            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+
+            warmup_start = time.time_ns()
+            m.set_input("data", data)
+            inference_start = time.time_ns()
+            m.run()
+            inference_dur = time.time_ns() - inference_start
+
+            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
+            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+
+        remote._sess.get_function("CloseRPCConnection")()
+        if int(os.getenv("GEM5_CP", 0)):
+            os.system('m5 exit')
     #############################################
     # Render inference image and detection boxes.
     # -------------------------------------------

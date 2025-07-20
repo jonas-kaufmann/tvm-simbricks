@@ -106,8 +106,7 @@ def main():
 
         # Send the inference library over to the remote RPC server
         upload_lib_start = time.time_ns()
-        remote.upload(graphlib)
-        lib = remote.load_module(os.path.basename(graphlib))
+        lib = remote.load_module(graphlib)
         upload_lib_dur = time.time_ns() - upload_lib_start
 
         # Request remote device
@@ -120,47 +119,68 @@ def main():
         m = graph_executor.GraphModule(lib["default"](ctx))
 
         num_inferences = batch_size // env.BATCH
+        
         if int(os.getenv("GEM5_CP", 0)):
             os.system("m5 checkpoint")
-        inference_start = time.time_ns()
-        for j in range(num_inferences):
-            # Set the network parameters and inputs
-            m.set_input("data", image)
-            # Perform inference
-            m.run()
-            # Get output
-            tvm_output = m.get_output(
-                0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
-            ).numpy()
-        inference_dur = time.time_ns() - inference_start
 
+        warmup_start = time.time_ns()
+        m.set_input("data", image)
+        inference_start = time.time_ns()
+
+        # for j in range(num_inferences):
+        m.run()
+            # Set the network parameters and inputs
+            # Perform inference
+            # Get output
+        inference_dur = time.time_ns() - inference_start
+       
+        # tvm_output = m.get_output(
+        #         0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
+        #     ).numpy()
         # release resources
-        remote._sess.get_function("CloseRPCConnection")()
 
         e2e_dur = time.time_ns() - e2e_start
         print(f"Rep {i}: Requesting remote device {request_dur:_} ns")
         print(f"Rep {i}: Sending and loading model {upload_lib_dur:_} ns")
+        print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
         print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
         print(f"Rep {i}: End-to-end latency: {e2e_dur:_} ns")
+        
+        for i in range(1):
+            warmup_start = time.time_ns()
+            m.set_input("data", image)
+            inference_start = time.time_ns()
+            m.run()
+            inference_dur = time.time_ns() - inference_start
+            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
+            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+
+            warmup_start = time.time_ns()
+            m.set_input("data", image)
+            inference_start = time.time_ns()
+            m.run()
+            inference_dur = time.time_ns() - inference_start
+            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
+            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+
+        remote._sess.get_function("CloseRPCConnection")()
+        if int(os.getenv("GEM5_CP", 0)):
+            os.system('m5 exit')
 
     if not debug:
         return
 
-    # read classification categories
-    synset = eval(open(f"{mxnet_dir}/synset.txt").read())
+    # # read classification categories
+    # synset = eval(open(f"{mxnet_dir}/synset.txt").read())
 
-    # Report top-5 classification results
-    for b in range(env.BATCH):
-        top_categories = np.argsort(tvm_output[b])
-        print(f"\nprediction for sample {b}")
-        for i in range(1, 6):
-            print(
-                f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
-            )
-
-    if int(os.getenv("GEM5_CP", 0)):
-        os.system('m5 exit')
-
+    # # Report top-5 classification results
+    # for b in range(env.BATCH):
+    #     top_categories = np.argsort(tvm_output[b])
+    #     print(f"\nprediction for sample {b}")
+    #     for i in range(1, 6):
+    #         print(
+    #             f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
+    #         )
 
 if __name__ == "__main__":
     main()
