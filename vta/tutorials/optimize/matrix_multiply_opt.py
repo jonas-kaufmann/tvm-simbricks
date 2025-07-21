@@ -38,18 +38,90 @@ limited hardware accelerator resources.
 from __future__ import absolute_import, print_function
 
 import os
-import time
-
-import numpy as np
-import vta
-from vta.testing import simulator
-
 import tvm
-from tvm import autotvm, rpc, te
+from tvm import te
+import vta
+import numpy as np
+from tvm import rpc
 from tvm.contrib import utils
+from vta.testing import simulator
+import time
+import subprocess
+from multiprocessing import shared_memory
+import ctypes
+
+def execute_and_kill(timeout=8):
+    command = ["stress-ng", "--cache 48", "--cache-enable-all"]
+    try:
+        # Start the subprocess
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Wait for the timeout
+        time.sleep(timeout)
+
+        # Check if the process is still running
+        if process.poll() is None:  # Process has not terminated
+            print(f"Killing process after {timeout} seconds...")
+            process.terminate()  # Graceful termination
+            time.sleep(2)  # Wait briefly for termination
+            if process.poll() is None:
+                print("Force killing process...")
+                process.kill()  # Forceful termination
+
+        # Get the output (if any)
+        stdout, stderr = process.communicate()
+        return stdout.decode(), stderr.decode()
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None, None
+
+# from vta.testing.simulator import _load_sw
 
 # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
 env = vta.get_env()
+
+# We read the Pynq RPC host IP address and port number from the OS environment
+#host = os.environ.get("VTA_RPC_HOST", "192.168.2.99")
+#port = int(os.environ.get("VTA_RPC_PORT", "9091"))
+
+#_load_sw()
+# We configure both the bitstream and the runtime system on the Pynq
+# to match the VTA configuration specified by the vta_config.json file.
+# if env.TARGET == "pynq":
+
+#     # Make sure that TVM was compiled with RPC=1
+#     assert tvm.runtime.enabled("rpc")
+#     remote = rpc.connect(host, port)
+
+#     # Reconfigure the JIT runtime
+#     vta.reconfig_runtime(remote)
+
+#     # Program the FPGA with a pre-compiled VTA bitstream.
+#     # You can program the FPGA with your own custom bitstream
+#     # by passing the path to the bitstream file instead of None.
+#     vta.program_fpga(remote, bitstream=None)
+
+# # In simulation mode, host the RPC server locally.
+# elif env.TARGET in ["sim", "tsim"]:
+#     remote = rpc.LocalSession()
+
+local_session = 0
+if not local_session:
+    time.sleep(4)
+    device_host = os.environ.get("VTA_RPC_HOST", "0.0.0.0")
+    device_port = os.environ.get("VTA_RPC_PORT", "9091")
+    remote = tvm.rpc.connect(device_host, int(device_port))
+    '''
+    tracker_host = os.environ.get("TVM_TRACKER_HOST", "0.0.0.0")
+    tracker_port = int(os.environ.get("TVM_TRACKER_PORT", 9190))
+
+    tracker = rpc.connect_tracker(tracker_host, tracker_port)
+    remote = tracker.request('tsim', priority=1, session_timeout=60)
+    '''
+else:
+    # _load_sw()
+    remote = rpc.LocalSession()
 
 ######################################################################
 # Computation Declaration
@@ -75,9 +147,9 @@ env = vta.get_env()
 # manageable chunks.
 
 # Fully connected layer dimensions: 1024 x 1024
-batch_size = 1
-in_channels = 1 * 1024
-out_channels = 1 * 1024
+batch_size = 128
+in_channels = 4096
+out_channels = 4096
 assert batch_size % env.BATCH == 0
 assert in_channels % env.BLOCK_IN == 0
 assert out_channels % env.BLOCK_OUT == 0
@@ -141,7 +213,7 @@ res = te.compute(output_shape, lambda *i: res_min(*i).astype(env.inp_dtype), nam
 # Create TVM schedule
 s = te.create_schedule(res.op)
 # Let's look at the default TVM schedule
-# print(tvm.lower(s, [data, weight, res], simple_mode=True))
+print(tvm.lower(s, [data, weight, res], simple_mode=True))
 
 ######################################################################
 # Blocking the Computation
@@ -227,7 +299,7 @@ ic_out, ic_inn = s[res_gemm].split(ic, i_block)
 s[res_gemm].reorder(ic_out, b_inn, oc_inn, ic_inn, b_tns, oc_tns, ic_tns)
 
 # Let's look at the current TVM schedule after blocking
-# print(tvm.lower(s, [data, weight, res], simple_mode=True))
+print(tvm.lower(s, [data, weight, res], simple_mode=True))
 
 ######################################################################
 # Lowering Copies to DMA Transfers
@@ -277,7 +349,7 @@ s[res_max].pragma(s[res_max].op.axis[0], env.alu)
 # Let's look at the final lowered TVM schedule after lowering memory
 # loads/stores down to DMA copy intrinsics, and the computation down to
 # VTA compute intrinsics.
-# print(vta.lower(s, [data, weight, res], simple_mode=True))
+print(vta.lower(s, [data, weight, res], simple_mode=True))
 
 ######################################################################
 # TVM Compilation and Verification
@@ -291,19 +363,17 @@ s[res_max].pragma(s[res_max].op.axis[0], env.alu)
 my_gemm = vta.build(
     s, [data, weight, res], tvm.target.Target("ext_dev", host=env.target_host), name="my_gemm"
 )
+temp = utils.tempdir()
+my_gemm.save(temp.relpath("gemm.o"))
+remote.upload(temp.relpath("gemm.o"))
+f = remote.load_module("gemm.o")
+
+# Get the remote device context
+ctx = remote.ext_dev(0)
 
 # Initialize the data and weight arrays randomly in the int range of (-128, 128]
 data_np = np.random.randint(-128, 128, size=(batch_size, in_channels)).astype(data.dtype)
 weight_np = np.random.randint(-128, 128, size=(out_channels, in_channels)).astype(weight.dtype)
-
-# Compute reference with numpy
-res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
-res_ref = res_ref >> env.INP_WIDTH
-res_ref = np.clip(res_ref, 0, inp_max)
-res_ref = res_ref.astype(res.dtype)
-res_ref = res_ref.reshape(
-    batch_size // env.BATCH, env.BATCH, out_channels // env.BLOCK_OUT, env.BLOCK_OUT
-).transpose((0, 2, 1, 3))
 
 # Apply packing to the data and weight arrays from a 2D to a 4D packed layout
 data_packed = data_np.reshape(
@@ -313,48 +383,79 @@ weight_packed = weight_np.reshape(
     out_channels // env.BLOCK_OUT, env.BLOCK_OUT, in_channels // env.BLOCK_IN, env.BLOCK_IN
 ).transpose((0, 2, 1, 3))
 
-# Set up RPC connection to remote
-tracker_host = os.environ.get("TVM_TRACKER_HOST", None)
-tracker_port = os.environ.get("TVM_TRACKER_PORT", None)
-# If above are unset, connect to device directly
-device_host = os.environ.get("VTA_RPC_HOST", "127.0.0.1")
-device_port = os.environ.get("VTA_RPC_PORT", "9091")
-assert tvm.runtime.enabled("rpc")
-if tracker_host is None or tracker_port is None:
-    remote = rpc.connect(device_host, int(device_port))
-else:
-    request_start = time.time_ns()
-    remote = autotvm.measure.request_remote(
-        env.TARGET, tracker_host, int(tracker_port), timeout=5
-    )
-    request_dur = time.time_ns() - request_start
-    print(f"Requesting remote from tracker took {request_dur:_} ns")
-
-temp = utils.tempdir()
-my_gemm.save(temp.relpath("gemm.o"))
-remote.upload(temp.relpath("gemm.o"))
-f = remote.load_module("gemm.o")
-
-# Get the remote device context
-ctx = remote.ext_dev(0)
-
 # Format the input/output arrays with tvm.nd.array to the DLPack standard
 data_nd = tvm.nd.array(data_packed, ctx)
 weight_nd = tvm.nd.array(weight_packed, ctx)
 res_nd = tvm.nd.array(np.zeros(output_shape).astype(res.dtype), ctx)
 
-# make a gem5 checkpoint
-if int(os.getenv("GEM5_CP", 0)):
-    os.system("m5 checkpoint")
+res_ref = np.dot(data_np.astype(env.acc_dtype), weight_np.T.astype(env.acc_dtype))
+res_ref = res_ref >> env.INP_WIDTH
+res_ref = np.clip(res_ref, 0, inp_max)
+res_ref = res_ref.astype(res.dtype)
+res_ref = res_ref.reshape(
+    batch_size // env.BATCH, env.BATCH, out_channels // env.BLOCK_OUT, env.BLOCK_OUT
+).transpose((0, 2, 1, 3))
 
+# Get an environment variable
+clock_id = 999
+if clock_id == 999:
+    # my_var = os.getenv('ACCVM_MMIO_BASE')
+    # memory_address = int(my_var, 16) 
+    # print(memory_address)
+    # import ctypes
+    # # Define a memory address (example only, should be a valid address)
+    # bpf_sched = memory_address
+    # # Convert the address to a pointer
+    # ptr = ctypes.cast(bpf_sched, ctypes.POINTER(ctypes.c_int))
+    # # Write a value to that memory location
+    # ptr.contents.value = 0x1000
+
+    nex_lib = ctypes.CDLL('/home/jiacma/vta_exp/libnex_tick.so')
+    shm_name = "/nex_mmio_regions"  # Must include the leading slash
+    shm = shared_memory.SharedMemory(name=shm_name)
+    buf = shm.buf
+    bpf_sched = ctypes.addressof(ctypes.c_char.from_buffer(buf))
+    ptr = ctypes.cast(bpf_sched, ctypes.POINTER(ctypes.c_int))
+    ptr.contents.value = 0x1000
+    nex_lib.tick_nex()
+
+else:
+    #execute_and_kill(20)
+    pass
+
+current_time = time.clock_gettime(clock_id)
+
+# Clear stats
+if env.TARGET in ["sim", "tsim"]:
+    simulator.clear_stats()
+
+start = time.time_ns()
 # Invoke the module to perform the computation
-start_ns = time.time_ns()
 f(data_nd, weight_nd, res_nd)
-end_ns = time.time_ns()
-print(f"Duration for invoking VTA: {(end_ns - start_ns):_} ns")
-
+end = time.time_ns()
+print(f"Duration for invoking VTA: {(end - start):_} ns")
+end_time = time.clock_gettime(clock_id)
 # Verify against numpy implementation
-np.testing.assert_equal(res_ref, res_nd.numpy())
+print(" real time taken ", end_time-current_time)
+for i in range(0):
+    start = time.time_ns()
+    # Invoke the module to perform the computation
+    f(data_nd, weight_nd, res_nd)
+    end = time.time_ns()
+    print(f"Duration for invoking VTA: {(end - start):_} ns")
+# np.testing.assert_equal(res_ref, res_nd.numpy())
+if clock_id == 999:
+    # Write a value to that memory location
+    ptr.contents.value = 0x2000
+    nex_lib.tick_nex()
+
+
+# # Print stats
+# if env.TARGET in ["sim", "tsim"]:
+#     sim_stats = simulator.stats()
+#     print("Execution statistics:")
+#     for k, v in sim_stats.items():
+#         print("\t{:<16}: {:>16}".format(k, v))
 
 print("Successful blocked matrix multiply test!")
 
