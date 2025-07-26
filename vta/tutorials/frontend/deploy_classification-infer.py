@@ -127,26 +127,18 @@ def main():
         m.set_input("data", image)
         inference_start = time.time_ns()
 
-        # for j in range(num_inferences):
         m.run()
-            # Set the network parameters and inputs
-            # Perform inference
-            # Get output
+
         inference_dur = time.time_ns() - inference_start
-       
-        # tvm_output = m.get_output(
-        #         0, tvm.nd.empty((env.BATCH, 1000), "float32", remote.cpu(0))
-        #     ).numpy()
-        # release resources
 
         e2e_dur = time.time_ns() - e2e_start
         print(f"Rep {i}: Requesting remote device {request_dur:_} ns")
         print(f"Rep {i}: Sending and loading model {upload_lib_dur:_} ns")
         print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
         print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
-        print(f"Rep {i}: End-to-end latency: {e2e_dur:_} ns")
+        print(f"Time taken {inference_dur + inference_start - warmup_start} ns")
         
-        for i in range(1):
+        for i in range(2):
             warmup_start = time.time_ns()
             m.set_input("data", image)
             inference_start = time.time_ns()
@@ -154,14 +146,8 @@ def main():
             inference_dur = time.time_ns() - inference_start
             print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
             print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+            print(f"Time taken {inference_dur + inference_start - warmup_start} ns")
 
-            warmup_start = time.time_ns()
-            m.set_input("data", image)
-            inference_start = time.time_ns()
-            m.run()
-            inference_dur = time.time_ns() - inference_start
-            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
-            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
 
         remote._sess.get_function("CloseRPCConnection")()
         if int(os.getenv("GEM5_CP", 0)):
@@ -169,18 +155,6 @@ def main():
 
     if not debug:
         return
-
-    # # read classification categories
-    # synset = eval(open(f"{mxnet_dir}/synset.txt").read())
-
-    # # Report top-5 classification results
-    # for b in range(env.BATCH):
-    #     top_categories = np.argsort(tvm_output[b])
-    #     print(f"\nprediction for sample {b}")
-    #     for i in range(1, 6):
-    #         print(
-    #             f"\t#{i}:{synset[top_categories[-i]]} {tvm_output[b][top_categories[-i]]}"
-    #         )
 
 if __name__ == "__main__":
     main()

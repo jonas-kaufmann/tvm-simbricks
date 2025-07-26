@@ -75,9 +75,9 @@ env = vta.get_env()
 # manageable chunks.
 
 # Fully connected layer dimensions: 1024 x 1024
-batch_size = 1
-in_channels = 1 * 1024
-out_channels = 1 * 1024
+batch_size = 128
+in_channels = 4 * 1024
+out_channels = 4 * 1024
 assert batch_size % env.BATCH == 0
 assert in_channels % env.BLOCK_IN == 0
 assert out_channels % env.BLOCK_OUT == 0
@@ -351,7 +351,8 @@ if int(os.getenv("GEM5_CP", 0)):
 start_ns = time.time_ns()
 f(data_nd, weight_nd, res_nd)
 end_ns = time.time_ns()
-print(f"Duration for invoking VTA: {(end_ns - start_ns):_} ns")
+print(f"Time taken {(end_ns - start_ns)} ns")
+
 
 # Verify against numpy implementation
 np.testing.assert_equal(res_ref, res_nd.numpy())

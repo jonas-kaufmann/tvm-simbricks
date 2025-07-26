@@ -110,8 +110,7 @@ def main():
 
     time_end = time.time_ns()
 
-    print(f"Time taken: {time_end - time_start}", flush=True)
-
+    print(f"Time taken {time_end - time_start} ns", flush=True)
 
     os.system("m5 exit")
 

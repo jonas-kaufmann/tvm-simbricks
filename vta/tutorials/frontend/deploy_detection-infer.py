@@ -163,6 +163,7 @@ def main():
         print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
         print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
         print(f"Rep {i}: End-to-end latency: {e2e_dur:_} ns")
+        print(f"Time taken {inference_dur + inference_start - warmup_start} ns")
 
         for i in range(2):
             warmup_start = time.time_ns()
@@ -173,15 +174,7 @@ def main():
 
             print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
             print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
-
-            warmup_start = time.time_ns()
-            m.set_input("data", data)
-            inference_start = time.time_ns()
-            m.run()
-            inference_dur = time.time_ns() - inference_start
-
-            print(f"Rep {i}: Warmup duration {inference_start - warmup_start:_} ns")
-            print(f"Rep {i}: Pure inference duration {inference_dur:_} ns")
+            print(f"Time taken {inference_dur + inference_start - warmup_start} ns")
 
         remote._sess.get_function("CloseRPCConnection")()
         if int(os.getenv("GEM5_CP", 0)):
