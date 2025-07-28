@@ -78,6 +78,7 @@ env = vta.get_env()
 batch_size = 128
 in_channels = 4 * 1024
 out_channels = 4 * 1024
+
 assert batch_size % env.BATCH == 0
 assert in_channels % env.BLOCK_IN == 0
 assert out_channels % env.BLOCK_OUT == 0
@@ -359,6 +360,8 @@ np.testing.assert_equal(res_ref, res_nd.numpy())
 
 print("Successful blocked matrix multiply test!")
 
+if int(os.getenv("GEM5_CP", 0)):
+    os.system('m5 exit')
 ######################################################################
 # Summary
 # -------
