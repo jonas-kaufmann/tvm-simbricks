@@ -1,0 +1,19 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-python.python",
+                "ms-vscode.cpptools-themes",
+                "ms-vscode.cpptools",
+                "mshr-h.veriloghdl",
+                "Rubymaniac.vscode-direnv",
+                "stkb.rewrap",
+                "surfer-project.surfer"
+            ]
+        }
+    }
+}
