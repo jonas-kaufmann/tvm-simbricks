@@ -1,0 +1,21 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "eeyore.yapf",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-python.isort",
+                "ms-python.python",
+                "ms-vscode.cpptools-themes",
+                "ms-vscode.cpptools",
+                "mshr-h.veriloghdl",
+                "Rubymaniac.vscode-direnv",
+                "stkb.rewrap",
+                "surfer-project.surfer"
+            ]
+        }
+    }
+}
