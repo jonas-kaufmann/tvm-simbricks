@@ -33,13 +33,15 @@ from vta import program_bitstream
 from ..environment import get_env, pkg_config
 from ..libinfo import find_libvta
 
-
-def server_start():
+def server_start(key):
     """VTA RPC server extension."""
     # pylint: disable=unused-variable
     curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
     proj_root = os.path.abspath(os.path.join(curr_path, "../../../../"))
-    dll_path = find_libvta("libvta")[0]
+    if key != "sim" and key != "tsim":
+        dll_path = find_libvta("libvta")[0]
+    else:
+        dll_path = find_libvta(f"libvta_{key}")[0]
     cfg_path = os.path.abspath(os.path.join(proj_root, "3rdparty/vta-hw/config/vta_config.json"))
     runtime_dll = []
     _load_module = tvm.get_global_func("tvm.rpc.server.load_module")
@@ -47,8 +49,12 @@ def server_start():
     def load_vta_dll():
         """Try to load vta dll"""
         if not runtime_dll:
-            runtime_dll.append(ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL))
-        logging.info("Loading VTA library: %s", dll_path)
+            if key != "sim" and key != "tsim":
+                runtime_dll.append(ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL))
+            else:
+                from vta.testing import simulator
+                runtime_dll.extend(simulator.LIBS)
+            logging.info("Loading VTA library: %s", dll_path)
         return runtime_dll[0]
 
     @tvm.register_func("tvm.rpc.server.load_module", override=True)
@@ -144,6 +150,8 @@ def main():
         tracker_addr = (url, port)
         if not args.key:
             raise RuntimeError("Need key to present type of resource when tracker is available")
+        global key
+        key = args.key
     else:
         tracker_addr = None
 
@@ -153,7 +161,7 @@ def main():
         import tvm
         import vta.exec.rpc_server
 
-        tvm.register_func("tvm.rpc.server.start", vta.exec.rpc_server.server_start, override=True)
+        tvm.register_func("tvm.rpc.server.start", lambda: vta.exec.rpc_server.server_start(key), override=True)
 
     server = rpc.Server(
         args.host,
