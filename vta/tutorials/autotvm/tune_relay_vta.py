@@ -214,8 +214,7 @@ tuning_option = {
             host=tracker_host,
             port=tracker_port,
             number=5,
-            timeout=60,
-            module_loader=vta.module_loader(),
+            timeout=10000,
             # check_correctness=True, # TODO: re-enable when check_correctness works again.
         ),
     ),
@@ -410,7 +409,7 @@ def tune_and_evaluate(tuning_opt):
 
     # We do not run the tuning in our webpage server since it takes too long.
     # Comment the following line to run it by yourself.
-    return
+    # return
 
     # run tuning tasks
     print("Tuning...")
