@@ -100,7 +100,7 @@ assert model in pack_dict
 # When target is 'pynq', reconfigure FPGA and runtime.
 # Otherwise, if target is 'sim', execute locally.
 
-if env.TARGET not in ["sim", "tsim", "intelfocl"]:
+if env.TARGET not in ["sim", "intelfocl"]:
 
     # Get remote from tracker node if environment variable is set.
     # To set up the tracker, you'll need to follow the "Auto-tuning
@@ -123,8 +123,8 @@ if env.TARGET not in ["sim", "tsim", "intelfocl"]:
     # You can program the FPGA with your own custom bitstream
     # by passing the path to the bitstream file instead of None.
     reconfig_start = time.time()
-    vta.reconfig_runtime(remote)
-    vta.program_fpga(remote, bitstream=None)
+    # vta.reconfig_runtime(remote)
+    # vta.program_fpga(remote, bitstream=None)
     reconfig_time = time.time() - reconfig_start
     print("Reconfigured FPGA and RPC runtime in {0:.2f}s!".format(reconfig_time))
 
