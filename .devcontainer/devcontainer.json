@@ -5,8 +5,8 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "eeyore.yapf",
                 "llvm-vs-code-extensions.vscode-clangd",
+                "ms-python.black-formatter",
                 "ms-python.isort",
                 "ms-python.python",
                 "ms-vscode.cpptools-themes",
@@ -14,7 +14,7 @@
                 "mshr-h.veriloghdl",
                 "Rubymaniac.vscode-direnv",
                 "stkb.rewrap",
-                "surfer-project.surfer"
+                "surfer-project.surfer",
             ]
         }
     }
