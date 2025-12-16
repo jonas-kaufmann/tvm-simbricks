@@ -26,6 +26,8 @@ only supports int8/32 inference) as well as graph packing (in order to enable
 tensorization in the core) to massage the compute graph for the hardware target.
 """
 
+import glob
+import logging
 import sys
 import time
 
@@ -36,6 +38,10 @@ from vta.top import graph_pack
 import tvm
 from tvm import autotvm, relay
 from tvm.contrib import cc
+logging.getLogger("te_compiler").setLevel(logging.INFO)
+logging.getLogger("te_compiler").addHandler(logging.StreamHandler(sys.stdout))
+logging.getLogger("autotvm").setLevel(logging.DEBUG)
+logging.getLogger("autotvm").addHandler(logging.StreamHandler(sys.stdout))
 
 
 def main():
@@ -43,14 +49,14 @@ def main():
         print(
             "Usage: deploy_classification-compile_lib.py"
             " <target_name_main_inference_device>"
-            " <target_name_host> <model_name> <output_dir>"
+            " <target_name_host> <model_name> <mxnet_dir>"
         )
         sys.exit(1)
 
     target_name = sys.argv[1]
     target_name_host = sys.argv[2]
     model_name = sys.argv[3]
-    output_dir = sys.argv[4]
+    mxnet_dir = sys.argv[4]
 
     # Load VTA parameters from the 3rdparty/vta-hw/config/vta_config.json file
     env = vta.get_env()
@@ -96,7 +102,11 @@ def main():
     # 7. Generate graph executor, `m`.
 
     # Load pre-configured AutoTVM schedules
-    with autotvm.tophub.context(target):
+    tuning_files = glob.glob(f"{mxnet_dir}/vta.*.log")
+    tuning_ctx = autotvm.tophub.ApplyHistoryBest([])
+    for tuning_file in tuning_files:
+        tuning_ctx.load(tuning_file)
+    with tuning_ctx:
 
         # Populate the shape and data type dictionary for ImageNet classifier input
         dtype_dict = {"data": "float32"}
@@ -161,8 +171,8 @@ def main():
         # Measure Relay build time
         build_time = time.time() - build_start
         print(
-            model_name
-            + " inference graph built in {0:.2f}s!".format(build_time)
+            model_name +
+            " inference graph built in {0:.2f}s!".format(build_time)
         )
 
         # Export the inference library
@@ -173,7 +183,7 @@ def main():
         if target_name_host == "cpu_arm64":
             fcompile = cc.cross_compiler("aarch64-linux-gnu-gcc")
         lib.export_library(
-            f"{output_dir}/graphlib-{model_name}-{target_name}-{target_name_host}{accel_cfg}.so",
+            f"{mxnet_dir}/graphlib-{model_name}-{target_name}-{target_name_host}{accel_cfg}.so",
             fcompile=fcompile,
         )
 
