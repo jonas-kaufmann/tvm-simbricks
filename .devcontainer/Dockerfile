@@ -49,6 +49,7 @@ RUN echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | tee /etc/ap
     zlib1g \
     zlib1g-dev \
    && locale-gen en_US.UTF-8 \
+   && bash docker/install/ubuntu_download_arm_compute_lib_binaries.sh \
    && rm -rf /var/lib/apt/lists/* \
    && echo 'eval "$(direnv hook bash)"' >> /home/vscode/.bashrc \
    && pip install --no-cache-dir \
