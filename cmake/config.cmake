@@ -109,7 +109,7 @@ set(USE_GRAPH_EXECUTOR_CUDA_GRAPH OFF)
 set(USE_PIPELINE_EXECUTOR OFF)
 
 # Whether to enable the profiler for the graph executor and vm
-set(USE_PROFILER OFF)
+set(USE_PROFILER ON)
 
 # Whether enable microTVM standalone runtime
 set(USE_MICRO_STANDALONE_RUNTIME OFF)
